@@ -1,0 +1,420 @@
+# RepOrtR Multi-Project Snakemake Workflow - Modular Version
+# HOLY WORKFLOW COMPLIANCE: This is the ONLY Snakefile that should be used
+# Handles multiple projects with intelligent caching and comparative analysis
+# Enhanced with stability features for long-running assemblies
+
+import os
+import sys
+import yaml
+import glob
+import logging
+import math
+import hashlib
+from workflows.smk_scripts.reportr_config import resolve_value as _resolve_value
+from workflows.smk_scripts.reportr_config import sample_metadata as _sample_metadata
+from pathlib import Path
+from project_manager import ProjectManager
+
+# Prevent accidental wildcard matches that span path separators.
+wildcard_constraints:
+    project="[^/]+",
+    sample="[^/]+",
+    comparative_analysis="[^/]+",
+    iter="[0-9]+"
+
+# Load configuration
+configfile: "projects/global_config.yaml"
+
+# Initialize project manager
+pm = ProjectManager()
+
+# Ensure configured log directory exists early (used by both Python logging
+# and Snakemake rule `log:` outputs).
+LOG_DIR = config.get("global", {}).get("log_dir", "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+
+# Setup logging for stability.
+# Avoid StreamHandler when stdout/stderr may be closed (e.g. detached/daemonized runs),
+# which can raise BrokenPipeError inside Snakemake's logging wrappers.
+_handlers = [logging.FileHandler(os.path.join(LOG_DIR, "snakemake.log"))]
+try:
+    if sys.stdout is not None and hasattr(sys.stdout, "isatty") and sys.stdout.isatty():
+        _handlers.append(logging.StreamHandler())
+except Exception:
+    pass
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=_handlers,
+)
+logger = logging.getLogger(__name__)
+
+# Get all projects and samples
+def get_all_projects():
+    """Get list of all projects"""
+    return list(config["projects"].keys())
+
+def get_project_samples(project_id):
+    """Get list of samples for a project"""
+    return config["projects"][project_id]["samples"]
+
+def get_sample_reads(project_id, sample_id):
+    """Get read file paths for a sample"""
+    # Use raw_reads directory with symbolic links.
+    # Prefer gzipped links when present so tools auto-detect compression.
+    raw_dir = Path(f"projects/{project_id}/samples/{sample_id}/raw_reads")
+    candidates = [
+        ("R1.fq.gz", "R2.fq.gz"),
+        ("R1.fastq.gz", "R2.fastq.gz"),
+        ("R1.fq", "R2.fq"),
+        ("R1.fastq", "R2.fastq"),
+    ]
+    for r1_name, r2_name in candidates:
+        r1 = raw_dir / r1_name
+        r2 = raw_dir / r2_name
+        if (r1.exists() and r2.exists()) or (r1.is_symlink() and r2.is_symlink()):
+            return str(r1), str(r2)
+
+    # Fallback: use configured absolute paths (allows running even if raw_reads was cleaned up).
+    sample_cfg = config["projects"][project_id]["samples"][sample_id]
+    r1_path = sample_cfg.get("r1_path")
+    r2_path = sample_cfg.get("r2_path")
+    if not (r1_path and r2_path):
+        raise ValueError(
+            f"Sample {project_id}/{sample_id} has no raw_reads symlinks and no r1_path/r2_path in config."
+        )
+    return str(r1_path), str(r2_path)
+
+def get_tarean_token_path(project_id, sample_id):
+    """Get path for TAREAN completion token"""
+    return f"projects/{project_id}/samples/{sample_id}/tarean/tarean.done"
+
+def get_comparative_proportions(project_id):
+    """Get comparative analysis proportions"""
+    project_config = config["projects"][project_id]
+    if "comparative_proportions" in project_config:
+        return project_config["comparative_proportions"]
+    return {"examicum": 1.0, "studicum": 1.1}
+
+def get_param(
+    project_id,
+    *keys,
+    sample_id=None,
+    comparative_analysis=None,
+    comparative_context: bool = False,
+):
+    """Lookup config value with layered deep-merge semantics.
+
+    Solo context: global → project → sample (when caller uses helpers that pass sample).
+    Comparative context: sample overrides are disallowed; use analysis-level layer.
+    """
+    allow_sample = not bool(comparative_context)
+    return _resolve_value(
+        config,
+        project=project_id,
+        sample=sample_id,
+        comparative_analysis=comparative_analysis,
+        allow_sample_overrides=allow_sample,
+        path=list(keys),
+    )
+
+
+def get_sample_prefix(project_id: str, sample_id: str) -> str:
+    """Metadata-only sample prefix with strict fallback (no slicing magic)."""
+    sm = get_sample_metadata(project_id, sample_id)
+    raw = sm.get("prefix")
+    if raw is None or str(raw).strip() == "":
+        return str(sample_id).upper()
+    return str(raw)
+
+
+def comparative_prefix_map(project_id: str, comparative_analysis: str) -> dict[str, str]:
+    """Return sample_id -> padded prefix (strict comparative metadata)."""
+    samples = config["projects"][project_id]["comparative_analyses"][comparative_analysis]["samples"]
+    base = {s: get_sample_prefix(project_id, s) for s in samples}
+    maxlen = max(len(p) for p in base.values()) if base else 0
+    floor = int(get_tarean_param(project_id, "prefix_length"))
+    floor = max(floor, int(get_tarean_param_for_comparative(project_id, comparative_analysis, "prefix_length")))
+    padlen = max(maxlen, floor)
+    return {s: (p.ljust(padlen, "_")) for s, p in base.items()}
+
+
+def comparative_prefix_length(project_id: str, comparative_analysis: str) -> int:
+    m = comparative_prefix_map(project_id, comparative_analysis)
+    return max((len(p) for p in m.values()), default=0)
+
+
+def get_node_resources(project_id=None):
+    """Return (cpu_count, mem_total_kb) using runtime detection where possible."""
+    cpu = os.cpu_count() or 1
+    mem_kb = None
+    try:
+        with open("/proc/meminfo", "r") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    # e.g. "MemTotal:       263838416 kB"
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        mem_kb = int(parts[1])
+                    break
+    except FileNotFoundError:
+        mem_kb = None
+
+    if mem_kb is None:
+        # Fallback: derive from configured default_memory (e.g. "180G").
+        default_mem = (
+            str(get_param(project_id, "default_memory")) if project_id is not None else str(config["global"]["default_memory"])
+        )
+        if not default_mem.upper().endswith("G"):
+            raise ValueError(f"default_memory must be a '<GiB>G' string, got: {default_mem!r}")
+        gb_value = float(default_mem.upper().replace("G", ""))
+        mem_kb = int(gb_value * 1024 * 1024)
+
+    return cpu, mem_kb
+
+
+def get_seqclust_threads(project_id, requested_threads):
+    """Compute 80% CPU threads, capped by requested_threads."""
+    cpu, _ = get_node_resources(project_id)
+    cap = max(1, int(math.floor(cpu * 0.8)))
+    req = int(requested_threads)
+    return max(1, min(req, cap))
+
+
+def _parse_percent_or_float(value) -> float:
+    """
+    Parse either:
+      - "80%" -> 0.80
+      - 0.80   -> 0.80
+      - "0.8"  -> 0.8
+      - 80     -> 0.80  (best-effort)
+    """
+    if value is None:
+        raise ValueError("value is None")
+    if isinstance(value, str):
+        v = value.strip()
+        if v.endswith("%"):
+            return float(v[:-1]) / 100.0
+        fv = float(v)
+        return fv / 100.0 if fv > 1.0 else fv
+    if isinstance(value, (int, float)):
+        # If user passed 80 instead of 0.8, normalize best-effort.
+        return float(value) / 100.0 if float(value) > 1.0 else float(value)
+    return float(value)
+
+
+def get_seqclust_memory_kb(project_id):
+    """
+    Compute seqclust RAM cap (and default -r value) in kB.
+
+    The effective cap comes from `projects.<project>.tarean_params.memory_limit`
+    (e.g. "80%"). `tarean_params.r_value` (if set) can further clamp the value.
+    """
+    _, mem_kb = get_node_resources(project_id)
+
+    memory_limit_raw = get_tarean_param(project_id, "memory_limit")
+    memory_limit_frac = _parse_percent_or_float(memory_limit_raw)
+
+    cap = int(math.floor(mem_kb * memory_limit_frac))
+    cap = max(1, cap)
+
+    r_value_raw = get_tarean_param(project_id, "r_value")
+    if r_value_raw is None:
+        return cap
+
+    # r_value can be a raw KB integer or a percent string (best-effort).
+    if isinstance(r_value_raw, str) and r_value_raw.strip().endswith("%"):
+        r_value_frac = _parse_percent_or_float(r_value_raw)
+        r_value_kb = int(math.floor(mem_kb * r_value_frac))
+    else:
+        r_value_kb = int(r_value_raw)
+    return max(1, min(r_value_kb, cap))
+
+
+def get_tarean_param(project_id, key):
+    """Project override -> global.tarean_params -> default.
+
+    NOTE: sample-aware resolution is done via get_tarean_param_for_sample().
+    """
+    return _resolve_value(config, project=project_id, path=["tarean_params", key])
+
+
+def get_tarean_param_for_sample(project_id, sample_id, key):
+    """Solo context: global → project → sample for tarean_params subtree."""
+    return _resolve_value(
+        config,
+        project=project_id,
+        sample=sample_id,
+        allow_sample_overrides=True,
+        path=["tarean_params", key],
+    )
+
+
+def get_tarean_param_for_comparative(project_id, comparative_analysis, key):
+    """Comparative strict context: global → project → comparative_analyses.<id> (no sample overrides)."""
+    return _resolve_value(
+        config,
+        project=project_id,
+        comparative_analysis=comparative_analysis,
+        allow_sample_overrides=False,
+        path=["tarean_params", key],
+    )
+
+
+def stable_rserv_port(port_base: int, key: str, mod: int = 1000) -> int:
+    """
+    Deterministic Rserve port mapping that does NOT depend on Python's hash().
+    This avoids interpreter-to-interpreter variability in Snakemake rule evaluation.
+    """
+    h = hashlib.md5(str(key).encode("utf-8")).hexdigest()
+    return int(h, 16) % mod + int(port_base)
+
+
+def get_mincl_percent(project_id):
+    """
+    Return `mincl` as-is for seqclust `-m`.
+
+    In RepOrtR it is a proportion / minimum cluster size threshold (NOT a
+    percent-of-reads needing `*100` conversion).
+    """
+    raw = get_tarean_param(project_id, "mincl")
+    return float(raw)
+
+def get_reads_per_assembly(project_id, sample_id=None, *, comparative_analysis=None, comparative_context=False):
+    """Get per-assembly read budget.
+
+    Solo: global → project → sample.
+    Comparative: global → project → comparative_analyses.<id> (no sample overrides).
+    """
+    allow_sample = not bool(comparative_context)
+    return _resolve_value(
+        config,
+        project=project_id,
+        sample=sample_id,
+        comparative_analysis=comparative_analysis,
+        allow_sample_overrides=allow_sample,
+        path=["total_reads_per_assembly"],
+    )
+
+
+def get_sample_metadata(project_id: str, sample_id: str) -> dict:
+    return _sample_metadata(config, project=project_id, sample=sample_id)
+
+def get_tarean_r_value(project_id):
+    """Backwards-compatible helper: prefer runtime-detected 80% RAM cap."""
+    return get_seqclust_memory_kb(project_id)
+
+# Global parameters
+THREADS = config["global"]["default_threads"]
+MEMORY = config["global"]["default_memory"]
+CACHE_DIR = config["global"]["cache_dir"]
+
+# Create necessary directories
+os.makedirs(LOG_DIR, exist_ok=True)
+os.makedirs("tmp", exist_ok=True)
+os.makedirs(".snakemake", exist_ok=True)
+
+# =============================================================================
+# INCLUDE MODULAR WORKFLOW FILES
+# =============================================================================
+
+# Include stable core rules
+include: "workflows/core_rules.smk"
+
+# Include test rules
+include: "workflows/test_rules.smk"
+
+# Include analysis rules
+include: "workflows/analysis_rules.smk"
+
+# Include iterative assemblies (rules are config-gated)
+include: "workflows/iterative_tarean_rules.smk"
+include: "workflows/iterative_comparative_rules.smk"
+
+# Include satMiner integration (rules are self-gated at runtime)
+include: "workflows/satminer_rules.smk"
+
+# Include post-tarean satMiner (iteration-aware; outputs under post_tarean/)
+include: "workflows/post_tarean_satminer_rules.smk"
+
+# Include post-tarean satMiner for comparative analyses (iteration-aware)
+include: "workflows/post_tarean_satminer_comparative_rules.smk"
+
+# Include post-tarean satMiner comparisons/plots
+include: "workflows/post_tarean_satminer_compare_rules.smk"
+
+# Include NCBI gathering rules (enabled-gated)
+if config["global"].get("ncbi_gathering", {}).get("enabled", False):
+    include: "workflows/ncbi_gathering_rules.smk"
+
+# Include report rules
+include: "workflows/report_rules.smk"
+
+# Include configuration validation
+include: "workflows/config_validation.smk"
+
+# Include progress tracking (if enabled)
+if config["global"].get("progress_tracking", {}).get("enabled", False):
+    include: "workflows/progress_tracking.smk"
+
+# =============================================================================
+# MAIN WORKFLOW COORDINATION
+# =============================================================================
+
+# The main workflow is now coordinated through the included files
+# Each module contains its own stable rules that can be maintained independently
+
+# =============================================================================
+# WORKFLOW VALIDATION
+# =============================================================================
+
+rule validate_workflow:
+    """Validate that all required modules are present and configuration is compliant"""
+    input:
+        config_valid = os.path.join(LOG_DIR, "config_validation.txt"),
+        hardcoded_check = os.path.join(LOG_DIR, "hardcoded_check.txt"),
+        tool_validation = os.path.join(LOG_DIR, "tool_validation.txt"),
+        legacy_check = os.path.join(LOG_DIR, "legacy_files_check.txt")
+    output:
+        touch("workflow_validated.txt")
+    shell:
+        """
+        # Check that all required workflow files exist
+        for module in core_rules.smk test_rules.smk analysis_rules.smk report_rules.smk config_validation.smk; do
+            if [ ! -f "workflows/$module" ]; then
+                echo "ERROR: Missing workflow module: workflows/$module"
+                exit 1
+            fi
+        done
+        
+        # Validate configuration compliance
+        if [ ! -f "{input.config_valid}" ]; then
+            echo "ERROR: Configuration validation failed"
+            exit 1
+        fi
+        
+        # Check for hardcoded values
+        if [ ! -f "{input.hardcoded_check}" ]; then
+            echo "ERROR: Hardcoded value check failed"
+            exit 1
+        fi
+        
+        # Validate tool paths
+        if [ ! -f "{input.tool_validation}" ]; then
+            echo "ERROR: Tool validation failed"
+            exit 1
+        fi
+        
+        # Validate legacy file compliance
+        if [ ! -f "{input.legacy_check}" ]; then
+            echo "ERROR: Legacy file check failed"
+            exit 1
+        fi
+        
+        echo "All workflow modules present and validated"
+        echo "Configuration compliance verified"
+        echo "No hardcoded values found"
+        echo "Tool paths validated"
+        echo "Legacy file compliance verified"
+        """

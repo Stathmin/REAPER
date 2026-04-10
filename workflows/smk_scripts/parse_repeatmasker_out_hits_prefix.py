@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+from typing import List
+
+import matplotlib.pyplot as plt
+import pandas as pd
+
+# Ensure repo root is on sys.path when invoked as a script (Snakemake runs `python3 workflows/...`).
+import sys
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from workflows.smk_scripts._repeatmasker_out import infer_prefix, iter_hits, parse_repeat_tags, safe_quantile
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--rm-out", required=True)
+    ap.add_argument("--hits-tsv", required=True)
+    ap.add_argument("--divergence-tsv", required=True)
+    ap.add_argument("--plots-dir", required=True)
+    ap.add_argument("--prefixes", required=True, help="Comma-separated list of sample prefixes (e.g. KA1,KA2)")
+    args = ap.parse_args()
+
+    rm_out = Path(args.rm_out)
+    hits_tsv = Path(args.hits_tsv)
+    div_tsv = Path(args.divergence_tsv)
+    plots_dir = Path(args.plots_dir)
+    hits_tsv.parent.mkdir(parents=True, exist_ok=True)
+    div_tsv.parent.mkdir(parents=True, exist_ok=True)
+    plots_dir.mkdir(parents=True, exist_ok=True)
+
+    allowed = {p.strip() for p in str(args.prefixes).split(",") if p.strip()}
+    if not allowed:
+        raise ValueError("No prefixes provided")
+
+    lines = rm_out.read_text(errors="replace").splitlines()
+    if any("There were no repetitive sequences detected" in ln for ln in lines[:10]):
+        pd.DataFrame(columns=["repeat", "smpl", "iter", "rank", "orig", "hit_count"]).to_csv(
+            hits_tsv, sep="\t", index=False
+        )
+        pd.DataFrame(
+            columns=[
+                "repeat",
+                "smpl",
+                "iter",
+                "rank",
+                "orig",
+                "n",
+                "pdiv_mean",
+                "pdiv_median",
+                "pdiv_q05",
+                "pdiv_q95",
+            ]
+        ).to_csv(div_tsv, sep="\t", index=False)
+        return 0
+
+    rows = []
+    for h in iter_hits(lines):
+        tags = parse_repeat_tags(h.repeat)
+        prefix = infer_prefix(h.query, allowed)
+        rows.append(
+            {
+                "score": h.score,
+                "pdiv": h.pdiv,
+                "query": h.query,
+                "qbegin": h.qbegin,
+                "qend": h.qend,
+                "strand": h.strand,
+                "repeat": h.repeat,
+                "prefix": prefix,
+                **tags,
+            }
+        )
+    df = pd.DataFrame(rows)
+    if df.empty:
+        df.to_csv(hits_tsv, sep="\t", index=False)
+        df.to_csv(div_tsv, sep="\t", index=False)
+        return 0
+
+    # Long abundance (repeat, prefix) -> hit_count
+    hits_long = (
+        df.groupby(["repeat", "smpl", "iter", "rank", "orig", "prefix"], as_index=False)
+        .size()
+        .rename(columns={"size": "hit_count"})
+    )
+
+    # Wide abundance: hit_count_<prefix> columns + total hit_count
+    wide = hits_long.pivot_table(
+        index=["repeat", "smpl", "iter", "rank", "orig"],
+        columns="prefix",
+        values="hit_count",
+        aggfunc="sum",
+        fill_value=0,
+    ).reset_index()
+    for p in sorted(allowed):
+        if p not in wide.columns:
+            wide[p] = 0
+        wide = wide.rename(columns={p: f"hit_count_{p}"})
+    per_prefix_cols = [f"hit_count_{p}" for p in sorted(allowed)]
+    wide["hit_count"] = wide[per_prefix_cols].sum(axis=1)
+    wide = wide.sort_values(["hit_count"], ascending=False)
+    wide.to_csv(hits_tsv, sep="\t", index=False)
+
+    # Divergence (total, not per prefix) per repeat
+    div_rows = []
+    for (rep, smpl, iter_s, rank_s, orig), sub in df.groupby(["repeat", "smpl", "iter", "rank", "orig"]):
+        vals = [float(x) for x in sub["pdiv"].dropna().tolist()]
+        div_rows.append(
+            {
+                "repeat": rep,
+                "smpl": smpl,
+                "iter": iter_s,
+                "rank": rank_s,
+                "orig": orig,
+                "n": len(vals),
+                "pdiv_mean": float(sum(vals) / len(vals)) if vals else float("nan"),
+                "pdiv_median": safe_quantile(vals, 0.5),
+                "pdiv_q05": safe_quantile(vals, 0.05),
+                "pdiv_q95": safe_quantile(vals, 0.95),
+            }
+        )
+    div = pd.DataFrame(div_rows).sort_values(["n"], ascending=False)
+    div.to_csv(div_tsv, sep="\t", index=False)
+
+    # Plots: total hit_count (and optionally stacked per prefix for top repeats)
+    top = wide.head(25).copy()
+    if not top.empty:
+        plt.figure(figsize=(12, 6))
+        plt.barh(range(len(top))[::-1], top["hit_count"].tolist()[::-1])
+        plt.yticks(range(len(top))[::-1], top["repeat"].tolist()[::-1], fontsize=6)
+        plt.xlabel("RepeatMasker hit count (proxy abundance, total across samples)")
+        plt.title("Top consensus entries by RM hit count (comparative)")
+        plt.tight_layout()
+        plt.savefig(plots_dir / "top_hits.png", dpi=200)
+        plt.savefig(plots_dir / "top_hits.svg")
+        plt.close()
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+

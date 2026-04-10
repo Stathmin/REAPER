@@ -1,0 +1,187 @@
+global:
+  default_threads: 28
+  default_memory: 180G
+  cache_dir: .snakemake/cache
+  log_dir: logs
+  temp_dir: tmp
+  pythonhashseed: '0'
+  total_reads_per_assembly: 8000
+  cleanup_after_prepare: true
+  incremental_processing: true
+  post_tarean_params:
+    legacy_enabled: false
+    legacy_merge_into_satminer: false
+    graph_report:
+      enabled: true
+      # LocalDB edge filtering (union-of-HSP coverage logic; see satminer_blast_x3).
+      coverage_types_keep:
+      - near-full
+      - composite
+      tasks_keep:
+      - megablast
+      - dc-megablast
+      # Optional extra filters (kept permissive by default).
+      min_pident: 0
+      max_evalue: 10.0
+      # Drop extremely long query sequences (x3 queries can triple length).
+      max_query_len_nt: 2100
+      # Alignment/consensus stage (cluster FASTAs).
+      mafft_threads: 8
+      mafft_args: "--auto --adjustdirection --quiet"
+      # Trimming policy for alignments (use ips::trimEnds equivalent in R stage, or python fallback)
+      trim_enabled: true
+      # Visualization
+      max_nodes_interactive: 3000
+      max_edges_interactive: 15000
+  iterative_assembly:
+    enabled: false
+    depth: 1
+    mode: both
+  # Snakemake resource caps (enforced via CLI `--resources ...`).
+  # The rules claim these resources; set the totals at runtime to control concurrency.
+  # Example: `--resources bbmap_slots=1 repeatmasker_slots=1`
+  resource_limits:
+    bbmap_slots: 1
+    repeatmasker_slots: 1
+  deconseq:
+    db: ''
+    # Threads used by bbmap-based filtering steps that generate unmapped_R1/R2 fastqs.
+    threads: 8
+    # K-mer size for iterative k-mer filtering (bbduk). Larger is more specific; smaller is more sensitive.
+    kmer_k: 27
+    # BBDuk paired-end: if true, discard the pair when either mate k-mer-matches the reference (stricter).
+    # If false, discard only when both mates match (lenient; more repeat reads can leak to the next iteration).
+    removeifeitherbad: true
+    # Minimum k-mer hits to count as a match (bbduk minkmerhits).
+    minkmerhits: 1
+    # Fraction of per-cluster cumulative coverage to include when building the iterative reference (satMiner step 1c).
+    # 0.5 matches legacy "half coverage"; 1.0 includes all contigs in each cluster (stricter, larger BBDuk ref).
+    iterative_reference_coverage_fraction: 0.5
+    keep: unmapped
+  ncbi_gathering:
+    enabled: true
+    default_taxonomy_id: '147389'
+    max_age_days: 30
+    max_sequence_length: 50000
+    min_sequence_length: 100
+    max_features: 50
+    batch_size: 100
+    email: example@example.com
+    repeat_terms:
+    - repeat
+    - repetitive
+    - enriched
+    - satellite
+    - transposon
+    - gypsy
+    - telomer
+    - marker
+    - anchor
+    - retrotransposon
+    - microsatellite
+    - repeated
+    - centromere
+    - knob
+    - heterochromatin
+  progress_tracking:
+    enabled: true
+  read_cleaning:
+    adapters: adapters/adapters.fa
+    bbduk_params: ktrim=r k=20 mink=10 hdist=2 threads=10
+    fastqc_threads: 10
+  read_preparation:
+    random_n: 8000
+    temp_dir: tmp
+  satminer:
+    enabled: false
+    repeatmasker_library: ''
+    # Threads used by satMiner heavy steps (e.g. RepeatMasker -pa).
+    repeatmasker_threads: 8
+    family_pattern_file: ''
+    rm_getseq_enabled: false
+    rm_getseq_min_len: 0
+  comparative_params:
+    blast_evalue: 1e-5
+    min_identity: 80
+    min_coverage: 80
+  tarean_params:
+    paired: true
+    automatic_filtering: true
+    tarean_mode: false
+    keep_names: false
+    cleanup: true
+    options: ILLUMINA_SENSITIVE_BLASTPLUS
+    domain_search: DIAMOND
+    prefix_length: 0
+    assembly_min: 2
+    mincl: 0.0001
+    min_lcov: 55
+    merge_threshold: 0
+projects:
+  triticeae_F21FTSEUHT1241:
+    taxonomy: Triticeae
+    description: Triticeae samples from F21FTSEUHT1241_PLAsynvR
+    ncbi_repeats: data/ncbi_repeats_triticeae.fa
+    oligo_fasta: references/oligo.fasta
+    tarean_params:
+      assembly_min: 2
+      mincl: 0.0001
+      r_value: 80%
+      threads: 28
+      memory_limit: 80%
+      options: ILLUMINA_SENSITIVE_BLASTPLUS
+      domain_search: DIAMOND
+      cleanup: true
+      automatic_filtering: true
+    samples:
+      KA1:
+        organism: Aegilops bicoris
+        genome_size: 1.92
+        r1_path: /storage/sequencing_runs/unknown_reads/NGS_BGI_1/F21FTSEUHT1241_PLAsynvR/1/210826_M021_V350016515_L02_1_1.fq.gz
+        r2_path: /storage/sequencing_runs/unknown_reads/NGS_BGI_1/F21FTSEUHT1241_PLAsynvR/1/210826_M021_V350016515_L02_1_2.fq.gz
+        prefix: KA1
+      KA2:
+        organism: Aegilops sharonesis
+        genome_size: 2.02
+        r1_path: /storage/sequencing_runs/unknown_reads/NGS_BGI_1/F21FTSEUHT1241_PLAsynvR/2/210826_M021_V350016515_L02_2_1.fq.gz
+        r2_path: /storage/sequencing_runs/unknown_reads/NGS_BGI_1/F21FTSEUHT1241_PLAsynvR/2/210826_M021_V350016515_L02_2_2.fq.gz
+        prefix: KA2
+      KA3:
+        organism: Aegilops kotschyi
+        genome_size: 1.93
+        r1_path: /storage/sequencing_runs/unknown_reads/NGS_BGI_1/F21FTSEUHT1241_PLAsynvR/3/210826_M021_V350016515_L02_3_1.fq.gz
+        r2_path: /storage/sequencing_runs/unknown_reads/NGS_BGI_1/F21FTSEUHT1241_PLAsynvR/3/210826_M021_V350016515_L02_3_2.fq.gz
+        prefix: KA3
+      KA4:
+        organism: Aegilops caudata markgrafii
+        genome_size: 1.99
+        r1_path: /storage/sequencing_runs/unknown_reads/NGS_BGI_1/F21FTSEUHT1241_PLAsynvR/4/210826_M021_V350016515_L02_4_1.fq.gz
+        r2_path: /storage/sequencing_runs/unknown_reads/NGS_BGI_1/F21FTSEUHT1241_PLAsynvR/4/210826_M021_V350016515_L02_4_2.fq.gz
+        prefix: KA4
+      KA5:
+        organism: Aegilops caudata markgrafii
+        genome_size: 1.99
+        r1_path: /storage/sequencing_runs/unknown_reads/NGS_BGI_1/F21FTSEUHT1241_PLAsynvR/5/210826_M021_V350016515_L02_5_1.fq.gz
+        r2_path: /storage/sequencing_runs/unknown_reads/NGS_BGI_1/F21FTSEUHT1241_PLAsynvR/5/210826_M021_V350016515_L02_5_2.fq.gz
+        prefix: KA5
+    comparative_analyses:
+      KA1_KA2:
+        samples:
+        - KA1
+        - KA2
+        description: KA1 vs KA2 comparative
+      KA2_KA3:
+        samples:
+        - KA2
+        - KA3
+        description: KA2 vs KA3 comparative
+    taxonomy_id: '147389'
+    taxonomy_ids:
+    - '147389'
+    total_reads_per_assembly: 50000
+    # Stricter iterative reference: include all cluster contigs in BBDuk mask (see global.deconseq).
+    deconseq:
+      iterative_reference_coverage_fraction: 1.0
+    iterative_assembly:
+      depth: 3
+      enabled: true

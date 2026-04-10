@@ -1,0 +1,17 @@
+cores: 8
+printshellcmds: true
+keep-going: true
+rerun-incomplete: true
+resources:
+  seqclust_slots: 1
+  # Allow 2 concurrent light jobs (clean_reads / prepare_reads FastQC+BBDuk) while seqclust stays serial.
+  bbduk_slots: 2
+  fastqc_slots: 2
+  # Iterative k-mer filtering (bbduk/bbmap) is I/O heavy; keep serial by default.
+  bbmap_slots: 1
+  # RepeatMasker is heavyweight; keep serial by default.
+  repeatmasker_slots: 1
+  # Comparative prep includes temp-heavy steps; keep serial by default.
+  prep_slots: 1
+rerun-triggers:
+  - mtime

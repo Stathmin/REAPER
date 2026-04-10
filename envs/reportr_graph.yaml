@@ -1,0 +1,18 @@
+name: reportr_graph
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - r-base>=4.3
+  - r-tidyverse
+  - r-igraph
+  - r-visnetwork
+  - r-htmlwidgets
+  - r-jsonlite
+  - r-readr
+  - r-dplyr
+  - r-tidyr
+  - r-stringr
+  - bioconductor-biostrings
+  - bioconductor-msa
+  - r-zip

@@ -1,0 +1,3 @@
+# Opt-in profile: quieter output (echoes and errors only)
+# Use: snakemake --profile quiet ...
+quiet: [progress, rules]

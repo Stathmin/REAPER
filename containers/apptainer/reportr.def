@@ -1,0 +1,21 @@
+Bootstrap: docker
+From: reportr:latest
+
+%help
+  RepOrtR container (Docker-derived).
+
+  Typical flow:
+    1) Build Docker image: docker build -t reportr:latest .
+    2) Build SIF from docker-daemon:
+         apptainer build reportr.sif docker-daemon://reportr:latest
+
+  Runtime:
+    - Bind-mount your working directory so the workflow can access projects/ and logs/
+    - Provide any extra binds for absolute read paths referenced in projects/global_config.yaml
+
+%environment
+  export PYTHONHASHSEED=0
+
+%runscript
+  exec bash -lc "conda run -n reportr bash"
+

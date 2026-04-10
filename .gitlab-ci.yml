@@ -1,0 +1,35 @@
+stages:
+  - smoke
+
+docker_smoke:
+  # NOTE: Docker-based smoke tests are kept for legacy CI only.
+  # Preferred workflow for real analyses is host-only Snakemake
+  # using the reportr/repeatexplorer Conda environments.
+  stage: smoke
+  image: docker:27
+  services:
+    - name: docker:27-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  script:
+    - docker version
+    - docker build -t reportr:ci .
+    - docker run --rm reportr:ci bash -lc "/opt/reportr/scripts/docker_smoke_test.sh"
+
+docker_full_tests:
+  # NOTE: Full Docker-based tests are deprecated and may be
+  # removed once equivalent host-only CI jobs are in place.
+  stage: smoke
+  image: docker:27
+  services:
+    - name: docker:27-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  script:
+    - docker version
+    - docker build -t reportr:ci .
+    - docker run --rm reportr:ci bash -lc "/opt/reportr/scripts/docker_full_test.sh"
+  when: manual
+

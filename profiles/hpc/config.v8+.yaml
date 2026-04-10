@@ -1,0 +1,17 @@
+jobs: 100
+keep-going: true
+rerun-incomplete: true
+resources:
+  seqclust_slots: 1
+  bbduk_slots: 2
+  fastqc_slots: 2
+  bbmap_slots: 1
+  repeatmasker_slots: 1
+  prep_slots: 1
+rerun-triggers:
+  - mtime
+latency-wait: 60
+max-jobs-per-second: 5
+max-status-checks-per-second: 5
+default-resources:
+  - mem_mb=4096

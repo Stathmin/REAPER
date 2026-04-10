@@ -1,0 +1,22 @@
+# Core dependencies (required)
+pandas>=1.3.0
+numpy>=1.20.0
+matplotlib>=3.3.0
+
+# Optional dependencies (for enhanced functionality)
+xlsxwriter>=3.0.0          # Excel report generation
+python-docx>=0.8.11        # Word document generation
+plotly>=5.0.0              # Interactive plots
+rapidfuzz>=2.0.0           # Fuzzy string matching
+pyyaml>=6.0                # YAML configuration files
+
+# Development dependencies (optional)
+pytest>=6.0.0              # Testing framework
+black>=21.0.0              # Code formatting
+flake8>=3.9.0              # Code linting
+mypy>=0.910                # Type checking
+
+# Note: BLAST+ must be installed separately via system package manager
+# Ubuntu/Debian: sudo apt-get install ncbi-blast+
+# CentOS/RHEL: sudo yum install blast
+# macOS: brew install blast 

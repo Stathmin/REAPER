@@ -1,0 +1,28 @@
+---
+description: Canonical Snakemake run commands (use TRITICEAE_RUN_COMMANDS.md)
+alwaysApply: true
+---
+
+# Snakemake runbook (canonical)
+
+Use `docs/TRITICEAE_RUN_COMMANDS.md` as the **source of truth** for how to run RepOrtR via Snakemake.
+
+- Prefer `Snakefile_modular` and `projects/global_config.yaml`.
+- Run Snakemake through the `reportr` conda env:
+  - `conda run -n reportr snakemake ...`
+- Always include `--use-conda` for workflow execution.
+- Default reliability flags (adjust when needed):
+  - `--rerun-incomplete`
+  - `--keep-going --show-failed-logs`
+  - Use resource caps (`--resources ...`) as described in the runbook.
+
+## Shell variable gotcha
+
+When using `CORES`, assign it *before* invoking Snakemake (avoid inline assignment that expands too early):
+
+```bash
+CORES=28
+conda run -n reportr snakemake -s Snakefile_modular --configfile projects/global_config.yaml \
+  --use-conda --rerun-incomplete --cores "$CORES" -p <targets...>
+```
+

@@ -1,0 +1,14 @@
+cores: 20
+
+resources:
+  mem_mb: 180000
+  bbduk_slots: 2
+  seqclust_slots: 2
+
+default-resources:
+  - mem_mb=4000
+
+rerun-incomplete: true
+rerun-triggers:
+  - mtime
+
