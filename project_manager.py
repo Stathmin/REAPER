@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RepOrtR Project Manager
+REAPER project manager
 Handles multi-project configuration and sample management
 
 HOLY WORKFLOW COMPLIANCE: This module manages project configuration for the modular workflow.
@@ -184,13 +184,13 @@ class ProjectManager:
 
     def add_sample(self, project_id: str, sample_id: str, taxonomy: str,
                    r1_path: str, r2_path: str, genome_size: float = 1.0) -> bool:
-        """Add a sample to a project with unique 4-letter prefix"""
+        """Add a sample to a project with a unique seqclust read prefix."""
         try:
             if project_id not in self.config["projects"]:
                 print(f"❌ Project '{project_id}' not found")
                 return False
             
-            # Generate unique 4-letter prefix
+            # Generate unique prefix (uppercased sample_id, disambiguated on collision)
             prefix = self._generate_unique_prefix(project_id, sample_id)
             
             # Create sample directory with correct structure
@@ -652,7 +652,7 @@ def main():
     """
     import argparse
     
-    parser = argparse.ArgumentParser(description="RepOrtR Project Manager")
+    parser = argparse.ArgumentParser(description="REAPER project manager")
     parser.add_argument(
         "action",
         choices=[

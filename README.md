@@ -1,18 +1,15 @@
-# REAPER (RepOrtR): project-centric repeatome workflows
+# REAPER: project-centric repeatome workflows
 
-REAPER (formerly RepOrtR) is a **project-centric layer** for running **RepeatExplorer2/TAREAN** repeatome analyses in a reproducible, incremental way:
+REAPER is a **project-centric layer** for running **RepeatExplorer2/TAREAN** repeatome analyses in a reproducible, incremental way:
 
 - **Project manager** (`project_manager.py`) registers projects/samples/comparatives and enforces a stable on-disk layout under `projects/`.
 - **Modular Snakemake workflow** (`Snakefile_modular` + `workflows/*.smk`) runs QC → deterministic prep → `seqclust` (RepeatExplorer2/TAREAN) → post‑TAREAN tables → optional reports/graphs.
 
 ## Start here
 
-- **How to run (canonical runbook)**: `docs/TRITICEAE_RUN_COMMANDS.md`
-- **Manuscript / methods context**: `docs/REPORTR_ARTICLE_DRAFT.md`
 - **Workflow structure**: `workflows/README.md`
 - **Snakemake profiles**: `profiles/README.md`
 
-Note: in this repo setup, `docs/` is treated as **untracked local material** (see `.gitignore`), but the paths above remain the canonical references.
 
 ## Quickstart (host / conda)
 
@@ -71,4 +68,3 @@ conda run -n reportr snakemake -s Snakefile_modular --configfile projects/global
 - `INSTALLATION.md`: install + verify environments and `repex_tarean/`
 - `PROJECT_MANAGER.md`: `project_manager.py` + `projects/global_config.yaml` explained
 - `RUN_GUIDE.md`: standard Snakemake flag sets, profiles, and end‑to‑end run lifecycle
-

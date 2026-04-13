@@ -10,7 +10,7 @@ suppressPackageStartupMessages({
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) != 6) {
-  stop("Usage: graph_report_render_visnetwork.R <nodes.tsv> <edges.tsv> <clusters.tsv> <cluster_annotations.tsv> <out.html> <out.nodes.enriched.tsv>")
+  stop("Usage: graph_report_render_visnetwork.R <nodes.tsv> <edges.full.tsv> <clusters.tsv> <cluster_annotations.tsv> <out.html> <out.nodes.enriched.tsv>")
 }
 
 nodes_path <- args[[1]]
@@ -30,7 +30,10 @@ nodes2 <- nodes %>%
   mutate(cluster_id = ifelse(is.na(cluster_id), "UNCLUSTERED", cluster_id))
 
 ann2 <- ann %>%
-  select(cluster_id, n_repeats, best_hit, best_species, best_name, best_pident, best_evalue, oligo_best_sseqid, oligo_fitting) %>%
+  select(any_of(c(
+    "cluster_id", "n_repeats", "best_hit", "best_species", "best_title",
+    "best_name", "best_pident", "best_evalue", "oligo_best_sseqid", "oligo_fitting"
+  ))) %>%
   mutate(across(everything(), ~ifelse(is.na(.x), "", as.character(.x))))
 
 norm_id <- function(x) {
@@ -45,16 +48,14 @@ nodes3 <- nodes2 %>%
   left_join(ann2, by = "cluster_id") %>%
   mutate(
     id = .data[["repeat"]],
-    label = .data[["repeat"]],
-    title = paste0(
-      "<b>", .data[["repeat"]], "</b><br/>",
-      "cluster: ", .data[["cluster_id"]], "<br/>",
-      "subject: ", .data[["subject_type"]], " ", .data[["subject_id"]], "<br/>",
-      ifelse(best_hit != "", paste0("NCBI: ", best_hit, " (", best_species, ")<br/>"), ""),
-      ifelse(oligo_best_sseqid != "", paste0("Oligo: ", oligo_best_sseqid, " (", oligo_fitting, ")<br/>"), "")
-    ),
+    # Labels are hidden by default to avoid overflow. The UI can turn them on.
+    label = "",
+    label_repeat = .data[["repeat"]],
+    title = "",
     group = .data[["cluster_id"]],
-    shape = ifelse(.data[["subject_type"]] == "comparative", "triangle", "dot")
+    shape = ifelse(.data[["subject_type"]] == "comparative", "triangle", "dot"),
+    # Use satMiner abundance (% of repeatome) to scale node size.
+    value = ifelse(is.na(.data[["size_pct"]]) | .data[["size_pct"]] <= 0, 1, .data[["size_pct"]])
   )
 
 edges2 <- edges %>%
@@ -62,6 +63,11 @@ edges2 <- edges %>%
     from = norm_id(qseqid),
     to = norm_id(sseqid),
     value = pmax(coverage, 0),
+    coverage = coverage,
+    coverage_type = coverage_type,
+    pident = pident,
+    evalue = evalue,
+    task = task,
     title = paste0(
       "coverage_type=", coverage_type,
       " cov=", round(coverage, 3),
@@ -74,7 +80,7 @@ edges2 <- edges %>%
 dir.create(dirname(out_html), recursive = TRUE, showWarnings = FALSE)
 write_tsv(nodes3, out_nodes_enriched)
 
-g <- visNetwork(nodes3, edges2, main = "Repeat interaction graph") %>%
+g <- visNetwork(nodes3, edges2, main = "") %>%
   visNodes(font = list(size = 10), scaling = list(label = list(enabled = TRUE, min = 8, max = 18))) %>%
   visEdges(smooth = FALSE, color = list(opacity = 0.35)) %>%
   visOptions(highlightNearest = list(enabled = TRUE, degree = 1, hover = TRUE), nodesIdSelection = TRUE) %>%
@@ -167,9 +173,60 @@ function(el, x) {
       '<b>Search</b> (JS regex; matches node id/tooltip). Selects matches + 1-hop neighbors.' +
     '</div>' +
     '<div style=\"display:flex; gap:6px; align-items:center;\">' +
-      '<input data-reportr=\"regex\" type=\"text\" placeholder=\"e.g. ^SMPL=KA1\\\\b | ORG=Aegilops | Oligo: .*weak\" style=\"flex:1; padding:4px 6px;\"/>' +
+      '<input data-reportr=\"regex\" type=\"text\" placeholder=\"e.g. ^SMPL=KA1\\\\b | ORG=Aegilops | pdiv_mean\" style=\"flex:1; padding:4px 6px;\"/>' +
       '<button data-reportr=\"apply\" style=\"padding:4px 8px;\" disabled>Apply</button>' +
       '<button data-reportr=\"clear\" style=\"padding:4px 8px;\" disabled>Clear</button>' +
+    '</div>' +
+    '<hr style=\"margin:8px 0; border:0; border-top:1px solid #eee;\"/>' +
+    '<div style=\"display:grid; grid-template-columns: 1fr 1fr; gap:8px;\">' +
+      '<div>' +
+        '<div><b>Labels</b></div>' +
+        '<label style=\"display:block; margin-top:4px;\"><input data-reportr=\"showLabels\" type=\"checkbox\"/> Show labels</label>' +
+        '<label style=\"display:block; margin-top:4px;\">Mode ' +
+          '<select data-reportr=\"labelMode\" style=\"width:100%; padding:2px 4px;\">' +
+            '<option value=\"repeat\">repeat</option>' +
+            '<option value=\"repeat_size\">repeat + size_pct</option>' +
+            '<option value=\"repeat_pdiv\">repeat + pdiv_mean</option>' +
+            '<option value=\"size_only\">size_pct only</option>' +
+          '</select>' +
+        '</label>' +
+      '</div>' +
+      '<div>' +
+        '<div><b>Tooltip fields</b></div>' +
+        '<label style=\"display:block; margin-top:4px;\"><input data-reportr=\"tt_size\" type=\"checkbox\" checked/> size_pct</label>' +
+        '<label style=\"display:block; margin-top:4px;\"><input data-reportr=\"tt_pdiv\" type=\"checkbox\" checked/> pdiv_mean</label>' +
+        '<label style=\"display:block; margin-top:4px;\"><input data-reportr=\"tt_tarean\" type=\"checkbox\" checked/> TAREAN_annotation</label>' +
+      '</div>' +
+    '</div>' +
+    '<hr style=\"margin:8px 0; border:0; border-top:1px solid #eee;\"/>' +
+    '<div style=\"display:grid; grid-template-columns: 1fr 1fr; gap:8px;\">' +
+      '<div>' +
+        '<div><b>Nodes</b></div>' +
+        '<label style=\"display:block; margin-top:4px;\">Samples' +
+          '<select data-reportr=\"samples\" multiple size=\"6\" style=\"width:100%; padding:2px 4px;\"></select>' +
+        '</label>' +
+        '<label style=\"display:block; margin-top:4px;\"><input data-reportr=\"keepSamples\" type=\"checkbox\" checked/> keep selected samples</label>' +
+        '<label style=\"display:block; margin-top:4px;\"><input data-reportr=\"keepComparatives\" type=\"checkbox\" checked/> keep comparatives</label>' +
+      '</div>' +
+      '<div>' +
+        '<div><b>Edges</b></div>' +
+        '<label style=\"display:block; margin-top:4px;\">Tasks' +
+          '<select data-reportr=\"tasks\" multiple size=\"6\" style=\"width:100%; padding:2px 4px;\"></select>' +
+        '</label>' +
+        '<label style=\"display:block; margin-top:4px;\">Min coverage_type ' +
+          '<select data-reportr=\"minCovType\" style=\"width:100%; padding:2px 4px;\">' +
+            '<option value=\"weak\">weak</option>' +
+            '<option value=\"partial\">partial</option>' +
+            '<option value=\"composite\">composite</option>' +
+            '<option value=\"near-full\" selected>near-full</option>' +
+          '</select>' +
+        '</label>' +
+        '<label style=\"display:block; margin-top:4px;\"><input data-reportr=\"hideIsolated\" type=\"checkbox\"/> hide isolated nodes</label>' +
+      '</div>' +
+    '</div>' +
+    '<div style=\"display:flex; gap:6px; margin-top:8px;\">' +
+      '<button data-reportr=\"applyFilters\" style=\"padding:4px 8px;\" disabled>Apply filters</button>' +
+      '<button data-reportr=\"resetFilters\" style=\"padding:4px 8px;\" disabled>Reset filters</button>' +
     '</div>' +
     '<div data-reportr=\"msg\" style=\"margin-top:6px; color:#444;\"></div>';
   container.appendChild(panel);
@@ -196,6 +253,19 @@ function(el, x) {
   var inputEl = panel.querySelector('[data-reportr=\"regex\"]');
   var applyBtn = panel.querySelector('[data-reportr=\"apply\"]');
   var clearBtn = panel.querySelector('[data-reportr=\"clear\"]');
+  var showLabelsEl = panel.querySelector('[data-reportr=\"showLabels\"]');
+  var labelModeEl = panel.querySelector('[data-reportr=\"labelMode\"]');
+  var samplesEl = panel.querySelector('[data-reportr=\"samples\"]');
+  var tasksEl = panel.querySelector('[data-reportr=\"tasks\"]');
+  var keepSamplesEl = panel.querySelector('[data-reportr=\"keepSamples\"]');
+  var keepComparativesEl = panel.querySelector('[data-reportr=\"keepComparatives\"]');
+  var minCovTypeEl = panel.querySelector('[data-reportr=\"minCovType\"]');
+  var hideIsolatedEl = panel.querySelector('[data-reportr=\"hideIsolated\"]');
+  var applyFiltersBtn = panel.querySelector('[data-reportr=\"applyFilters\"]');
+  var resetFiltersBtn = panel.querySelector('[data-reportr=\"resetFilters\"]');
+  var ttSizeEl = panel.querySelector('[data-reportr=\"tt_size\"]');
+  var ttPdivEl = panel.querySelector('[data-reportr=\"tt_pdiv\"]');
+  var ttTareanEl = panel.querySelector('[data-reportr=\"tt_tarean\"]');
 
   function setMsg(s) { if (msgEl) msgEl.textContent = s; }
   setMsg('Initializing graph…');
@@ -243,6 +313,7 @@ function(el, x) {
       _waitFor(resolveNetwork, 60000, 100)
     ]).then(function(res) {
       var network = res[0];
+      var edgesDS = (network && network.body && network.body.data) ? network.body.data.edges : null;
       // Ensure the vis.js canvas uses the full available space.
       try {
         if (typeof network.setSize === 'function') network.setSize('100%', '100%');
@@ -357,6 +428,98 @@ function(el, x) {
         edgesDS.update(edgeUpdates);
       }
 
+      function _parseSampleId(nodeId) {
+        var m = String(nodeId || '').match(/SMPL=([^|]+)/);
+        return m ? m[1] : '';
+      }
+
+      function _covRank(ct) {
+        ct = String(ct || '').toLowerCase();
+        if (ct === 'near-full') return 4;
+        if (ct === 'composite') return 3;
+        if (ct === 'partial') return 2;
+        if (ct === 'weak') return 1;
+        return 0;
+      }
+
+      function _buildTitle(n) {
+        // Base fields always present.
+        var out = '';
+        out += '<b>' + String(n.label_repeat || n.id || '') + '</b><br/>';
+        if (n.cluster_id) out += 'cluster: ' + String(n.cluster_id) + '<br/>';
+        if (n.subject_type || n.subject_id) out += 'subject: ' + String(n.subject_type || '') + ' ' + String(n.subject_id || '') + '<br/>';
+
+        if (ttSizeEl && ttSizeEl.checked && n.size_pct !== undefined && n.size_pct !== null && String(n.size_pct) !== '') {
+          out += 'size_pct: ' + String(n.size_pct) + '<br/>';
+        }
+        if (ttPdivEl && ttPdivEl.checked && n.pdiv_mean !== undefined && n.pdiv_mean !== null && String(n.pdiv_mean) !== '') {
+          out += 'pdiv_mean: ' + String(n.pdiv_mean) + '<br/>';
+        }
+        if (ttTareanEl && ttTareanEl.checked && n.TAREAN_annotation) {
+          out += 'TAREAN: ' + String(n.TAREAN_annotation) + '<br/>';
+        }
+
+        if (n.best_hit) out += 'NCBI: ' + String(n.best_hit) + (n.best_species ? (' (' + String(n.best_species) + ')') : '') + '<br/>';
+        if (n.best_title) out += 'NCBI desc: ' + String(n.best_title) + '<br/>';
+        if (n.oligo_best_sseqid) out += 'Oligo: ' + String(n.oligo_best_sseqid) + (n.oligo_fitting ? (' (' + String(n.oligo_fitting) + ')') : '') + '<br/>';
+        return out;
+      }
+
+      function _applyLabelMode(nodesDS, showLabels, mode) {
+        var nodes = nodesDS.get();
+        var upd = [];
+        for (var i = 0; i < nodes.length; i++) {
+          var n = nodes[i];
+          if (!n || n.id === undefined || n.id === null) continue;
+          var label = '';
+          if (showLabels) {
+            var rep = String(n.label_repeat || n.id || '');
+            var size = (n.size_pct !== undefined && n.size_pct !== null) ? String(n.size_pct) : '';
+            var pdiv = (n.pdiv_mean !== undefined && n.pdiv_mean !== null) ? String(n.pdiv_mean) : '';
+            if (mode === 'repeat') label = rep;
+            else if (mode === 'repeat_size') label = size ? (rep + ' [' + size + '%]') : rep;
+            else if (mode === 'repeat_pdiv') label = pdiv ? (rep + ' [pdiv=' + pdiv + ']') : rep;
+            else if (mode === 'size_only') label = size ? (size + '%') : '';
+            else label = rep;
+          }
+          upd.push({ id: n.id, label: label });
+        }
+        nodesDS.update(upd);
+      }
+
+      function _refreshTitles(nodesDS) {
+        var nodes = nodesDS.get();
+        var upd = [];
+        for (var i = 0; i < nodes.length; i++) {
+          var n = nodes[i];
+          if (!n || n.id === undefined || n.id === null) continue;
+          upd.push({ id: n.id, title: _buildTitle(n) });
+        }
+        nodesDS.update(upd);
+      }
+
+      function _populateSelect(selectEl, values) {
+        if (!selectEl) return;
+        selectEl.innerHTML = '';
+        for (var i = 0; i < values.length; i++) {
+          var opt = document.createElement('option');
+          opt.value = values[i];
+          opt.textContent = values[i];
+          opt.selected = true;
+          selectEl.appendChild(opt);
+        }
+      }
+
+      function _getSelected(selectEl) {
+        var out = [];
+        if (!selectEl) return out;
+        for (var i = 0; i < selectEl.options.length; i++) {
+          var o = selectEl.options[i];
+          if (o.selected) out.push(o.value);
+        }
+        return out;
+      }
+
       function applyRegex() {
         var raw = (inputEl && inputEl.value) ? inputEl.value : '';
         raw = String(raw || '').trim();
@@ -370,7 +533,6 @@ function(el, x) {
 
         var ids = _expandWithNeighbors(network, matched);
         network.selectNodes(ids, false);
-        var edgesDS = (network && network.body && network.body.data) ? network.body.data.edges : null;
         if (edgesDS) {
           snapshotOrig(nodesDS, edgesDS);
           applyDim(nodesDS, edgesDS, ids);
@@ -385,11 +547,146 @@ function(el, x) {
       clearBtn.addEventListener('click', function() {
         inputEl.value = '';
         setMsg('');
-        var edgesDS = (network && network.body && network.body.data) ? network.body.data.edges : null;
         if (edgesDS) restoreOrig(nodesDS, edgesDS);
         network.unselectAll();
         network.fit({ animation: { duration: 200 } });
       });
+
+      // Initialize control lists from current data.
+      try {
+        var allNodes = nodesDS.get();
+        var smpls = {};
+        for (var i0 = 0; i0 < allNodes.length; i0++) {
+          var s0 = _parseSampleId(allNodes[i0].id);
+          if (s0) smpls[s0] = true;
+        }
+        _populateSelect(samplesEl, Object.keys(smpls).sort());
+      } catch (e) {}
+
+      try {
+        if (edgesDS) {
+          var allEdges = edgesDS.get();
+          var tasks = {};
+          for (var j0 = 0; j0 < allEdges.length; j0++) {
+            var t0 = String(allEdges[j0].task || '').trim();
+            if (t0) tasks[t0] = true;
+          }
+          _populateSelect(tasksEl, Object.keys(tasks).sort());
+        }
+      } catch (e) {}
+
+      function _applyFilters() {
+        var selectedSamples = _getSelected(samplesEl);
+        var selectedTasks = _getSelected(tasksEl);
+        var keepSamples = keepSamplesEl ? !!keepSamplesEl.checked : true;
+        var keepComparatives = keepComparativesEl ? !!keepComparativesEl.checked : true;
+        var minCov = minCovTypeEl ? String(minCovTypeEl.value || 'weak') : 'weak';
+        var minCovRank = _covRank(minCov);
+
+        var keepSampleSet = {};
+        for (var i = 0; i < selectedSamples.length; i++) keepSampleSet[selectedSamples[i]] = true;
+        var keepTaskSet = {};
+        for (var k = 0; k < selectedTasks.length; k++) keepTaskSet[selectedTasks[k]] = true;
+
+        var nodeArr = nodesDS.get();
+        var keepNode = {};
+        var nodeUpdates = [];
+        for (var n = 0; n < nodeArr.length; n++) {
+          var nd = nodeArr[n];
+          var isComp = String(nd.subject_type || '') === 'comparative';
+          var keep = true;
+          if (isComp && !keepComparatives) keep = false;
+          if (!isComp && keepSamples) {
+            var sid = _parseSampleId(nd.id);
+            if (sid && !keepSampleSet[sid]) keep = false;
+          }
+          keepNode[nd.id] = !!keep;
+          nodeUpdates.push({ id: nd.id, hidden: !keep });
+        }
+        nodesDS.update(nodeUpdates);
+
+        // Edge filtering and (optional) isolation trimming.
+        var edgeArr = edgesDS ? edgesDS.get() : [];
+        var edgeUpdates = [];
+        var degree = {};
+        for (var e = 0; e < edgeArr.length; e++) {
+          var ed = edgeArr[e];
+          var from = ed.from, to = ed.to;
+          var ok = true;
+          if (!keepNode[from] || !keepNode[to]) ok = false;
+          var task = String(ed.task || '').trim();
+          if (ok && selectedTasks.length && !keepTaskSet[task]) ok = false;
+          var ct = String(ed.coverage_type || '').trim();
+          if (ok && _covRank(ct) < minCovRank) ok = false;
+          edgeUpdates.push({ id: ed.id, hidden: !ok });
+          if (ok) {
+            degree[from] = (degree[from] || 0) + 1;
+            degree[to] = (degree[to] || 0) + 1;
+          }
+        }
+        if (edgesDS) edgesDS.update(edgeUpdates);
+
+        if (hideIsolatedEl && hideIsolatedEl.checked) {
+          var nu = [];
+          for (var n2 = 0; n2 < nodeArr.length; n2++) {
+            var nd2 = nodeArr[n2];
+            var keep2 = keepNode[nd2.id] && (degree[nd2.id] || 0) > 0;
+            nu.push({ id: nd2.id, hidden: !keep2 });
+            keepNode[nd2.id] = keep2;
+          }
+          nodesDS.update(nu);
+        }
+
+        _applyLabelMode(nodesDS, showLabelsEl && showLabelsEl.checked, labelModeEl ? labelModeEl.value : 'repeat');
+        _refreshTitles(nodesDS);
+        setMsg('Filters applied.');
+      }
+
+      function _resetFilters() {
+        if (samplesEl) {
+          for (var i = 0; i < samplesEl.options.length; i++) samplesEl.options[i].selected = true;
+        }
+        if (tasksEl) {
+          for (var j = 0; j < tasksEl.options.length; j++) tasksEl.options[j].selected = true;
+        }
+        if (keepSamplesEl) keepSamplesEl.checked = true;
+        if (keepComparativesEl) keepComparativesEl.checked = true;
+        if (minCovTypeEl) minCovTypeEl.value = 'near-full';
+        if (hideIsolatedEl) hideIsolatedEl.checked = false;
+        if (showLabelsEl) showLabelsEl.checked = false;
+        if (labelModeEl) labelModeEl.value = 'repeat';
+
+        // Unhide everything, then reapply title/label defaults.
+        var nodesAll = nodesDS.get();
+        var nu = [];
+        for (var n = 0; n < nodesAll.length; n++) nu.push({ id: nodesAll[n].id, hidden: false, label: '' });
+        nodesDS.update(nu);
+        if (edgesDS) {
+          var edgesAll = edgesDS.get();
+          var eu = [];
+          for (var e = 0; e < edgesAll.length; e++) eu.push({ id: edgesAll[e].id, hidden: false });
+          edgesDS.update(eu);
+        }
+        _refreshTitles(nodesDS);
+        setMsg('Filters reset.');
+      }
+
+      // Enable filter buttons now that datasets exist.
+      applyFiltersBtn.disabled = false;
+      resetFiltersBtn.disabled = false;
+
+      applyFiltersBtn.addEventListener('click', _applyFilters);
+      resetFiltersBtn.addEventListener('click', _resetFilters);
+
+      // Live refresh of titles when tooltip field toggles change.
+      if (ttSizeEl) ttSizeEl.addEventListener('change', function(){ _refreshTitles(nodesDS); });
+      if (ttPdivEl) ttPdivEl.addEventListener('change', function(){ _refreshTitles(nodesDS); });
+      if (ttTareanEl) ttTareanEl.addEventListener('change', function(){ _refreshTitles(nodesDS); });
+      if (showLabelsEl) showLabelsEl.addEventListener('change', function(){ _applyLabelMode(nodesDS, showLabelsEl.checked, labelModeEl ? labelModeEl.value : 'repeat'); });
+      if (labelModeEl) labelModeEl.addEventListener('change', function(){ _applyLabelMode(nodesDS, showLabelsEl && showLabelsEl.checked, labelModeEl.value); });
+
+      // Initial tooltip content.
+      _refreshTitles(nodesDS);
       });
     }).catch(function() {
       setMsg('Graph not ready yet (network not initialized). Waiting…');
@@ -400,5 +697,5 @@ function(el, x) {
 }
 ")
 
-saveWidget(g, file = out_html, selfcontained = FALSE)
+saveWidget(g, file = out_html, selfcontained = FALSE, title = "RepOrtR graph")
 

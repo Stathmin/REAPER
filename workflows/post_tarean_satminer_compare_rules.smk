@@ -521,7 +521,7 @@ rule project_repeat_interaction_graph_report:
 
         conda run -n reportr_graph Rscript workflows/smk_scripts/graph_report_render_visnetwork.R \
           "{output.nodes}" \
-          "{output.edges}" \
+          "{output.edges_full}" \
           "{output.clusters}" \
           "{output.cluster_ann}" \
           "{output.html}" \

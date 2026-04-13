@@ -175,13 +175,24 @@ projects/**
 data/probename_reads/*.fq
 data/probename_reads/*.fastq
 
-# Project outputs and analysis results
+# Project outputs and analysis results (per-sample assemblies)
 projects/*/samples/*/fastqc/
 projects/*/samples/*/filtered_reads/
 projects/*/samples/*/raw_reads/
 projects/*/samples/*/tarean/
 projects/*/samples/*/post_tarean/
 projects/*/samples/*/test/
+
+# Same runtime layout under comparative analyses
+projects/*/comparative/*/fastqc/
+projects/*/comparative/*/filtered_reads/
+projects/*/comparative/*/raw_reads/
+projects/*/comparative/*/tarean/
+projects/*/comparative/*/post_tarean/
+projects/*/comparative/*/test/
+
+# Per-project generated reports (e.g. repeat_interaction_graph); root reports/ also ignored above
+projects/*/reports/
 
 # Test outputs
 test_outputs/
