@@ -1,4 +1,4 @@
-# REAPER: project-centric repeatome workflows
+# REAPER: Repeatome Extended Analysis Pipeline — Execution and Reporting. Project-centric repeatome workflows
 
 REAPER is a **project-centric layer** for running **RepeatExplorer2/TAREAN** repeatome analyses in a reproducible, incremental way:
 
