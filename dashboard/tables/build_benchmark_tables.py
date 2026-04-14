@@ -2,9 +2,9 @@
 """Aggregate Snakemake benchmark TSVs into manuscript summary tables.
 
 Reads benchmarks/*.tsv (Snakemake benchmark format) and writes
-docs/tables/table3_benchmarks_triticeae.tsv. Run from repository root:
+dashboard/tables/table3_benchmarks_triticeae.tsv. Run from repository root:
 
-  python3 docs/tables/build_tables.py
+  python3 dashboard/tables/build_benchmark_tables.py
 
 If no benchmark files are present, keep the committed summary TSV as the
 published artifact and regenerate after a full Triticeae run.
