@@ -165,34 +165,34 @@ references/**/*.PDF
 # ===========================================
 # CRITICAL RUNTIME DATA (MUST EXCLUDE)
 # ===========================================
-# Runtime projects policy:
-# - treat `projects/` as runtime-only and external (bind-mount in containers)
-# - keep only the template `projects/global_config.yaml` tracked
-projects/**
+# Runtime projects policy: ignore almost everything under projects/, but Git must
+# un-ignore parent directories for any tracked file (see gitignore(5) "re-include").
+# Tracked templates only:
+#   projects/global_config.yaml
+#   projects/<project>/project_metadata.yaml
+#   projects/<project>/samples/<sample>/metadata.yaml
+#   projects/<project>/comparative/<analysis>/metadata.yaml
+# Logs, benchmarks, root reports/, fastqc/, post_tarean/, tarean/, etc. stay untracked.
+
+projects/*
 !projects/global_config.yaml
+!projects/*/
+projects/*/*
+!projects/*/project_metadata.yaml
+!projects/*/samples/
+projects/*/samples/*
+!projects/*/samples/*/
+projects/*/samples/*/*
+!projects/*/samples/*/metadata.yaml
+!projects/*/comparative/
+projects/*/comparative/*
+!projects/*/comparative/*/
+projects/*/comparative/*/*
+!projects/*/comparative/*/metadata.yaml
 
 # Large test data files
 data/probename_reads/*.fq
 data/probename_reads/*.fastq
-
-# Project outputs and analysis results (per-sample assemblies)
-projects/*/samples/*/fastqc/
-projects/*/samples/*/filtered_reads/
-projects/*/samples/*/raw_reads/
-projects/*/samples/*/tarean/
-projects/*/samples/*/post_tarean/
-projects/*/samples/*/test/
-
-# Same runtime layout under comparative analyses
-projects/*/comparative/*/fastqc/
-projects/*/comparative/*/filtered_reads/
-projects/*/comparative/*/raw_reads/
-projects/*/comparative/*/tarean/
-projects/*/comparative/*/post_tarean/
-projects/*/comparative/*/test/
-
-# Per-project generated reports (e.g. repeat_interaction_graph); root reports/ also ignored above
-projects/*/reports/
 
 # Test outputs
 test_outputs/
@@ -207,8 +207,7 @@ backups/
 nohup*.out
 nohup.out
 
-# Ad-hoc root outputs (never commit)
-reports/
+# Ad-hoc root outputs
 docs/*.html
 
 # Local validation marker (empty touch file from dry-runs)
@@ -226,3 +225,12 @@ tmp/
 # - projects/global_config.yaml (configuration template)
 # - projects/*/project_metadata.yaml (project metadata templates)
 # - projects/*/samples/*/metadata.yaml (sample metadata templates)
+
+# ===========================================
+# REPORTS (TRACKED)
+# ===========================================
+# User-requested: keep reports under version control.
+!reports/
+!reports/**
+!projects/*/reports/
+!projects/*/reports/**

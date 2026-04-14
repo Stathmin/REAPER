@@ -1,0 +1,12 @@
+>SMPL=KA2|ORG=Aegilops_sharonesis|GENOMES=None|ITER=1|RANK=2|ORIG=CL143_TR_1_x_122nt
+gtgtccacgtacagcccgttcacgggtccgtgtacgtgtgtgtgcctcgtacgtggtttt
+gcccagttttccatggcgcgcgtccagttccgt---------------------------
+-
+>SMPL=KA4|ORG=Aegilops_caudata_markgrafii|GENOMES=None|ITER=1|RANK=2|ORIG=CL63_TR_1_x_121nt
+gtgtccacgtacagcccgttcacgggtccgtgtacgtgcgtgtgcctcgtacgtggtttt
+gcccagttttccatggcgcgcgtcacgtttcgtccacgacggccgtcggccgttttttcc
+c
+>SMPL=KA5|ORG=Aegilops_caudata_markgrafii|GENOMES=None|ITER=1|RANK=2|ORIG=CL96_TR_1_x_121nt
+------------------------------------------------gtacgtggtttt
+gcccagttttccatggcgcgcgtcacgtttcgtccatgacggccgtcggccgttttttcc
+c
