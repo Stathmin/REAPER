@@ -120,7 +120,12 @@ global:
 projects:
   triticeae_F21FTSEUHT1241:
     taxonomy: Triticeae
-    description: Triticeae samples from F21FTSEUHT1241_PLAsynvR
+    description: >
+      Triticeae genus Aegilops samples (run F21FTSEUHT1241_PLAsynvR) for
+      satellite/repeat characterization via RepeatExplorer2/TAREAN. Includes
+      three diploid Sitopsis/goatgrass species (Sc, Ssh, Cc genomes) and one
+      tetraploid species (UkSk genome), spanning wheat B- and other subgenome
+      donor lineages.
     ncbi_repeats: data/ncbi_repeats_triticeae.fa
     oligo_fasta: references/oligo.fasta
     tarean_params:
@@ -135,46 +140,56 @@ projects:
       automatic_filtering: true
     samples:
       KA1:
-        organism: Aegilops bicoris
-        genome_size: 1.92
+        organism: Aegilops bicornis
+        genome_type: diploid (Sc genome)
+        genome_size: 6.69  # Gbp; 1C = 6.84 pg (Eilam et al. 2007)
         r1_path: /storage/sequencing_runs/unknown_reads/NGS_BGI_1/F21FTSEUHT1241_PLAsynvR/1/210826_M021_V350016515_L02_1_1.fq.gz
         r2_path: /storage/sequencing_runs/unknown_reads/NGS_BGI_1/F21FTSEUHT1241_PLAsynvR/1/210826_M021_V350016515_L02_1_2.fq.gz
         prefix: KA1
+        description: Sitopsis section diploid, candidate B-subgenome relative of wheat.
       KA2:
-        organism: Aegilops sharonesis
-        genome_size: 2.02
+        organism: Aegilops sharonensis
+        genome_type: diploid (Ssh genome)
+        genome_size: 7.35  # Gbp; 1C = 7.52 pg (Eilam et al. 2007)
         r1_path: /storage/sequencing_runs/unknown_reads/NGS_BGI_1/F21FTSEUHT1241_PLAsynvR/2/210826_M021_V350016515_L02_2_1.fq.gz
         r2_path: /storage/sequencing_runs/unknown_reads/NGS_BGI_1/F21FTSEUHT1241_PLAsynvR/2/210826_M021_V350016515_L02_2_2.fq.gz
         prefix: KA2
+        description: Sitopsis section diploid, largest genome among the Sitopsis species.
       KA3:
         organism: Aegilops kotschyi
-        genome_size: 1.93
+        genome_type: tetraploid (UkSk genome)
+        genome_size: 12.36  # Gbp; 1C = 12.64 pg (Eilam et al. 2007/2008)
         r1_path: /storage/sequencing_runs/unknown_reads/NGS_BGI_1/F21FTSEUHT1241_PLAsynvR/3/210826_M021_V350016515_L02_3_1.fq.gz
         r2_path: /storage/sequencing_runs/unknown_reads/NGS_BGI_1/F21FTSEUHT1241_PLAsynvR/3/210826_M021_V350016515_L02_3_2.fq.gz
         prefix: KA3
+        description: Allotetraploid combining U- and S-genome lineages; largest genome in this sample set.
       KA4:
-        organism: Aegilops caudata markgrafii
-        genome_size: 1.99
+        organism: Aegilops markgrafii (syn. Aegilops caudata)
+        genome_type: diploid (Cc genome)
+        genome_size: 4.73  # Gbp; 1C = 4.84 pg (Eilam et al. 2007)
         r1_path: /storage/sequencing_runs/unknown_reads/NGS_BGI_1/F21FTSEUHT1241_PLAsynvR/4/210826_M021_V350016515_L02_4_1.fq.gz
         r2_path: /storage/sequencing_runs/unknown_reads/NGS_BGI_1/F21FTSEUHT1241_PLAsynvR/4/210826_M021_V350016515_L02_4_2.fq.gz
         prefix: KA4
+        description: C-genome diploid donor to Ae. cylindrica and Ae. triuncialis; smallest genome in this set.
       KA5:
-        organism: Aegilops caudata markgrafii
-        genome_size: 1.99
+        organism: Aegilops markgrafii (syn. Aegilops caudata)
+        genome_type: diploid (Cc genome)
+        genome_size: 4.73  # Gbp; 1C = 4.84 pg (Eilam et al. 2007)
         r1_path: /storage/sequencing_runs/unknown_reads/NGS_BGI_1/F21FTSEUHT1241_PLAsynvR/5/210826_M021_V350016515_L02_5_1.fq.gz
         r2_path: /storage/sequencing_runs/unknown_reads/NGS_BGI_1/F21FTSEUHT1241_PLAsynvR/5/210826_M021_V350016515_L02_5_2.fq.gz
         prefix: KA5
+        description: Biological replicate of KA4 (Ae. markgrafii).
     comparative_analyses:
       KA1_KA2:
         samples:
         - KA1
         - KA2
-        description: KA1 vs KA2 comparative
+        description: Ae. bicornis vs Ae. sharonensis (Sc vs Ssh) — Sitopsis diploid comparison.
       KA2_KA3:
         samples:
         - KA2
         - KA3
-        description: KA2 vs KA3 comparative
+        description: Ae. sharonensis (Ssh, diploid) vs Ae. kotschyi (UkSk, tetraploid) — diploid vs polyploid repeat landscape comparison.
     taxonomy_id: '147389'
     taxonomy_ids:
     - '147389'
